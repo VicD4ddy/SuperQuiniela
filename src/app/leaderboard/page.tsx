@@ -311,6 +311,11 @@ export default function LeaderboardPage() {
     });
   }, []);
 
+  const next5UpcomingMatches = useMemo(() => {
+    const upcoming = allMatchesSorted.filter(m => officialMatchesMap[m.id] === undefined);
+    return upcoming.slice(0, 5); // los 5 primeros próximos
+  }, [allMatchesSorted, officialMatchesMap]);
+
   const last10PlayedMatches = useMemo(() => {
     const played = allMatchesSorted.filter(m => officialMatchesMap[m.id] !== undefined);
     return played.slice(-10).reverse(); // latest first
@@ -737,107 +742,181 @@ export default function LeaderboardPage() {
                     </div>
                   </div>
 
-                  {/* Últimos 10 Partidos Jugados */}
-                  <div className="space-y-3.5 border-t border-line/45 pt-4">
-                    <h4 className="text-xs font-bold text-content-muted uppercase tracking-wider flex items-center gap-1.5">
-                      <span>⚽</span> Últimos 10 Partidos Jugados
-                    </h4>
-                    {last10PlayedMatches.length === 0 ? (
-                      <p className="text-xs text-content-muted italic">No se han registrado resultados oficiales todavía.</p>
-                    ) : (
-                      <div className="space-y-2.5">
-                        {last10PlayedMatches.map((match) => {
-                          const isKO = match.id.startsWith("M");
-                          const teams = getMatchTeams(match);
-                          const official = officialMatchesMap[match.id];
-                          const pred = isKO 
-                            ? selectedUser.knockoutPredictions?.[match.id]
-                            : selectedUser.predictions?.[match.id];
-                          
-                          const predExists = pred && pred.homeGoals !== null && pred.awayGoals !== null;
-                          
-                          let pts = 0;
-                          let scoring: any = null;
-                          if (predExists && official) {
-                            pts = calculateMatchPoints(pred.homeGoals!, pred.awayGoals!, official.home_goals, official.away_goals);
-                            scoring = getDetailedMatchScoring(pred.homeGoals!, pred.awayGoals!, official.home_goals, official.away_goals);
-                          }
+                  {/* Contenedor de Pronósticos del Jugador (Próximos 5 y Últimos 10) */}
+                  <div className="space-y-6 pt-4 border-t border-line/45">
+                    
+                    {/* Sección 1: Próximos 5 Pronósticos */}
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-bold text-content-muted uppercase tracking-wider flex items-center gap-1.5">
+                        <span>🔮</span> Próximos 5 Pronósticos
+                      </h4>
+                      {next5UpcomingMatches.length === 0 ? (
+                        <p className="text-xs text-content-muted italic">No hay partidos próximos programados.</p>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {next5UpcomingMatches.map((match) => {
+                            const isKO = match.id.startsWith("M");
+                            const teams = getMatchTeams(match);
+                            const official = officialMatchesMap[match.id];
+                            const pred = isKO 
+                              ? selectedUser.knockoutPredictions?.[match.id]
+                              : selectedUser.predictions?.[match.id];
+                            const predExists = pred && pred.homeGoals !== null && pred.awayGoals !== null;
+                            const headerLabel = isKO ? (ROUND_NAMES[(match as any).round] || (match as any).round) : `Grupo ${(match as any).group}`;
 
-                          const pointsColor = scoring
-                            ? scoring.isExactScore ? "text-emerald-400 bg-emerald-500/20 border-emerald-500/40"
-                            : scoring.isWinnerGuessed || scoring.isTieGuessed ? "text-green-400 bg-green-500/15 border-green-500/30"
-                            : scoring.isConsolation ? "text-yellow-400 bg-yellow-500/15 border-yellow-500/30"
-                            : "text-red-400 bg-red-500/15 border-red-500/30"
-                            : "";
-
-                          const pointsLabel = scoring
-                            ? scoring.isExactScore ? "Exacto"
-                            : scoring.isWinnerGuessed ? "Ganador"
-                            : scoring.isTieGuessed ? "Empate"
-                            : scoring.isConsolation ? "Cercano"
-                            : "Errado"
-                            : "";
-
-                          const headerLabel = isKO 
-                            ? (ROUND_NAMES[(match as any).round] || (match as any).round)
-                            : `Grupo ${(match as any).group}`;
-
-                          return (
-                            <div 
-                              key={match.id}
-                              className="bg-panel/30 border border-line/50 rounded-xl p-3 flex flex-col gap-2"
-                            >
-                              <div className="flex items-center justify-between text-[10px] text-content-muted font-bold border-b border-line/30 pb-1.5">
-                                <span className="text-brand uppercase">{headerLabel} · {match.id}</span>
-                                {predExists ? (
-                                  <span className={`px-2 py-0.5 rounded-full border ${pointsColor}`}>
-                                    +{pts} pts · {pointsLabel}
+                            return (
+                              <div key={match.id} className="bg-panel/30 border border-line/50 rounded-xl p-3 flex flex-col gap-2">
+                                <div className="flex items-center justify-between text-[10px] text-content-muted font-bold border-b border-line/30 pb-1.5">
+                                  <span className="text-brand uppercase">{headerLabel} · {match.id}</span>
+                                  <span className="px-2 py-0.5 rounded-full border border-line/30 text-content-muted bg-panel/20 font-medium">
+                                    Por jugar
                                   </span>
-                                ) : (
-                                  <span className="px-2 py-0.5 rounded-full border border-line/40 text-content-muted bg-panel/30">
-                                    Sin pronóstico
-                                  </span>
-                                )}
+                                </div>
+
+                                <div className="grid grid-cols-7 items-center gap-1">
+                                  <div className="col-span-2 flex items-center gap-1.5 min-w-0">
+                                    {teams.homeTeam ? (
+                                      <>
+                                        <Flag iso2={teams.homeTeam.iso2} name={teams.homeTeam.name} size="sm" />
+                                        <span className="text-xs font-semibold text-content truncate">{teams.homeTeam.name}</span>
+                                      </>
+                                    ) : (
+                                      <span className="text-xs text-content-muted italic">TBD</span>
+                                    )}
+                                  </div>
+                                  <div className="col-span-3 flex items-center justify-center gap-2">
+                                    <div className="flex flex-col items-center gap-0.5">
+                                      <span className="text-[8px] text-content-muted font-bold uppercase tracking-wider scale-90">Pronos.</span>
+                                      <div className="bg-base border border-line px-1.5 py-0.5 rounded text-content-muted font-medium text-xs font-mono" title="Pronóstico del participante">
+                                        {predExists ? `${pred.homeGoals}-${pred.awayGoals}` : "-"}
+                                      </div>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-content-muted self-end pb-1">/</span>
+                                    <div className="flex flex-col items-center gap-0.5">
+                                      <span className="text-[8px] text-content-muted/70 font-bold uppercase tracking-wider scale-90">Oficial</span>
+                                      <div className="bg-panel/20 border border-line/30 px-1.5 py-0.5 rounded text-content-muted/60 font-semibold text-xs animate-pulse" title="Partido pendiente de juego">
+                                        vs
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="col-span-2 flex items-center gap-1.5 justify-end min-w-0">
+                                    {teams.awayTeam ? (
+                                      <>
+                                        <span className="text-xs font-semibold text-content truncate">{teams.awayTeam.name}</span>
+                                        <Flag iso2={teams.awayTeam.iso2} name={teams.awayTeam.name} size="sm" />
+                                      </>
+                                    ) : (
+                                      <span className="text-xs text-content-muted italic">TBD</span>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
 
-                              <div className="grid grid-cols-7 items-center gap-1">
-                                <div className="col-span-2 flex items-center gap-1.5 min-w-0">
-                                  {teams.homeTeam ? (
-                                    <>
-                                      <Flag iso2={teams.homeTeam.iso2} name={teams.homeTeam.name} size="sm" />
-                                      <span className="text-xs font-semibold text-content truncate">{teams.homeTeam.name}</span>
-                                    </>
+                    {/* Sección 2: Últimos 10 Pronósticos Jugados */}
+                    <div className="space-y-3 pt-2">
+                      <h4 className="text-xs font-bold text-content-muted uppercase tracking-wider flex items-center gap-1.5">
+                        <span>⚽</span> Últimos 10 Pronósticos Jugados
+                      </h4>
+                      {last10PlayedMatches.length === 0 ? (
+                        <p className="text-xs text-content-muted italic">No se han registrado resultados oficiales todavía.</p>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {last10PlayedMatches.map((match) => {
+                            const isKO = match.id.startsWith("M");
+                            const teams = getMatchTeams(match);
+                            const official = officialMatchesMap[match.id];
+                            const pred = isKO 
+                              ? selectedUser.knockoutPredictions?.[match.id]
+                              : selectedUser.predictions?.[match.id];
+                            const predExists = pred && pred.homeGoals !== null && pred.awayGoals !== null;
+                            
+                            let pts = 0;
+                            let scoring: any = null;
+                            if (predExists && official) {
+                              pts = calculateMatchPoints(pred.homeGoals!, pred.awayGoals!, official.home_goals, official.away_goals);
+                              scoring = getDetailedMatchScoring(pred.homeGoals!, pred.awayGoals!, official.home_goals, official.away_goals);
+                            }
+
+                            const pointsColor = scoring
+                              ? scoring.isExactScore ? "text-emerald-400 bg-emerald-500/20 border-emerald-500/40"
+                              : scoring.isWinnerGuessed || scoring.isTieGuessed ? "text-green-400 bg-green-500/15 border-green-500/30"
+                              : scoring.isConsolation ? "text-yellow-400 bg-yellow-500/15 border-yellow-500/30"
+                              : "text-red-400 bg-red-500/15 border-red-500/30"
+                              : "";
+
+                            const pointsLabel = scoring
+                              ? scoring.isExactScore ? "Exacto"
+                              : scoring.isWinnerGuessed ? "Ganador"
+                              : scoring.isTieGuessed ? "Empate"
+                              : scoring.isConsolation ? "Cercano"
+                              : "Errado"
+                              : "";
+
+                            const headerLabel = isKO ? (ROUND_NAMES[(match as any).round] || (match as any).round) : `Grupo ${(match as any).group}`;
+
+                            return (
+                              <div key={match.id} className="bg-panel/30 border border-line/50 rounded-xl p-3 flex flex-col gap-2">
+                                <div className="flex items-center justify-between text-[10px] text-content-muted font-bold border-b border-line/30 pb-1.5">
+                                  <span className="text-brand uppercase">{headerLabel} · {match.id}</span>
+                                  {predExists ? (
+                                    <span className={`px-2 py-0.5 rounded-full border ${pointsColor}`}>
+                                      +{pts} pts · {pointsLabel}
+                                    </span>
                                   ) : (
-                                    <span className="text-xs text-content-muted italic">TBD</span>
+                                    <span className="px-2 py-0.5 rounded-full border border-line/40 text-content-muted bg-panel/30">
+                                      Sin pronóstico
+                                    </span>
                                   )}
                                 </div>
 
-                                <div className="col-span-3 flex items-center justify-center gap-1.5 text-xs font-bold">
-                                  <div className="bg-base border border-line px-1.5 py-0.5 rounded text-content-muted font-medium" title="Pronóstico del participante">
-                                    {predExists ? `${pred.homeGoals}-${pred.awayGoals}` : "-"}
+                                <div className="grid grid-cols-7 items-center gap-1">
+                                  <div className="col-span-2 flex items-center gap-1.5 min-w-0">
+                                    {teams.homeTeam ? (
+                                      <>
+                                        <Flag iso2={teams.homeTeam.iso2} name={teams.homeTeam.name} size="sm" />
+                                        <span className="text-xs font-semibold text-content truncate">{teams.homeTeam.name}</span>
+                                      </>
+                                    ) : (
+                                      <span className="text-xs text-content-muted italic">TBD</span>
+                                    )}
                                   </div>
-                                  <span className="text-[10px] font-bold text-content-muted">/</span>
-                                  <div className="bg-panel border border-brand/30 px-1.5 py-0.5 rounded text-brand" title="Resultado oficial real">
-                                    {official.home_goals}-{official.away_goals}
+                                  <div className="col-span-3 flex items-center justify-center gap-2">
+                                    <div className="flex flex-col items-center gap-0.5">
+                                      <span className="text-[8px] text-content-muted font-bold uppercase tracking-wider scale-90">Pronos.</span>
+                                      <div className="bg-base border border-line px-1.5 py-0.5 rounded text-content-muted font-medium text-xs font-mono" title="Pronóstico del participante">
+                                        {predExists ? `${pred.homeGoals}-${pred.awayGoals}` : "-"}
+                                      </div>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-content-muted self-end pb-1">/</span>
+                                    <div className="flex flex-col items-center gap-0.5">
+                                      <span className="text-[8px] text-brand/80 font-bold uppercase tracking-wider scale-90">Oficial</span>
+                                      <div className="bg-panel border border-brand/30 px-1.5 py-0.5 rounded text-brand text-xs font-mono" title="Resultado oficial real">
+                                        {official.home_goals}-{official.away_goals}
+                                      </div>
+                                    </div>
                                   </div>
-                                </div>
-
-                                <div className="col-span-2 flex items-center gap-1.5 justify-end min-w-0">
-                                  {teams.awayTeam ? (
-                                    <>
-                                      <span className="text-xs font-semibold text-content truncate">{teams.awayTeam.name}</span>
-                                      <Flag iso2={teams.awayTeam.iso2} name={teams.awayTeam.name} size="sm" />
-                                    </>
-                                  ) : (
-                                    <span className="text-xs text-content-muted italic">TBD</span>
-                                  )}
+                                  <div className="col-span-2 flex items-center gap-1.5 justify-end min-w-0">
+                                    {teams.awayTeam ? (
+                                      <>
+                                        <span className="text-xs font-semibold text-content truncate">{teams.awayTeam.name}</span>
+                                        <Flag iso2={teams.awayTeam.iso2} name={teams.awayTeam.name} size="sm" />
+                                      </>
+                                    ) : (
+                                      <span className="text-xs text-content-muted italic">TBD</span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 

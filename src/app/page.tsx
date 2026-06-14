@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Users, Swords, X, Trophy, EyeOff, Search, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
+import { Users, Swords, X, Trophy, EyeOff, Search, Calendar, ChevronLeft, ChevronRight, BarChart3 } from "lucide-react";
 import {
   ALL_GROUP_MATCHES,
   ALL_KNOCKOUT_MATCHES,
@@ -59,6 +59,60 @@ export default function PronosticosPage() {
   const [pdfStep, setPdfStep] = useState<string>("");
   const [officialMatchesMap, setOfficialMatchesMap] = useState<Record<string, { home_goals: number; away_goals: number }>>({});
   const [feedSearchQuery, setFeedSearchQuery] = useState("");
+  const [selectedMatchForStats, setSelectedMatchForStats] = useState<any | null>(null);
+
+  // Función para obtener estadísticas agregadas de la comunidad para un partido
+  const getMatchCommunityStats = useCallback((matchId: string, isKO: boolean) => {
+    let localWins = 0;
+    let draws = 0;
+    let awayWins = 0;
+    let total = 0;
+    const scoreCounts: Record<string, number> = {};
+
+    users.forEach((u) => {
+      const pred = isKO ? u.knockoutPredictions?.[matchId] : u.predictions?.[matchId];
+      if (pred && pred.homeGoals !== null && pred.awayGoals !== null) {
+        total++;
+        if (pred.homeGoals > pred.awayGoals) {
+          localWins++;
+        } else if (pred.homeGoals < pred.awayGoals) {
+          awayWins++;
+        } else {
+          draws++;
+        }
+        const scoreKey = `${pred.homeGoals}-${pred.awayGoals}`;
+        scoreCounts[scoreKey] = (scoreCounts[scoreKey] || 0) + 1;
+      }
+    });
+
+    if (total === 0) {
+      return {
+        localPct: 0,
+        drawPct: 0,
+        awayPct: 0,
+        consensoScore: null,
+        consensoPct: 0,
+        total
+      };
+    }
+
+    const localPct = Math.round((localWins / total) * 100);
+    const drawPct = Math.round((draws / total) * 100);
+    const awayPct = Math.round((awayWins / total) * 100);
+
+    const sortedScores = Object.entries(scoreCounts).sort((a, b) => b[1] - a[1]);
+    const consensoScore = sortedScores[0]?.[0] || null;
+    const consensoPct = consensoScore ? Math.round((sortedScores[0][1] / total) * 100) : 0;
+
+    return {
+      localPct,
+      drawPct,
+      awayPct,
+      consensoScore,
+      consensoPct,
+      total
+    };
+  }, [users]);
 
   const [activeWidgetDate, setActiveWidgetDate] = useState<string>(() => {
     const today = new Date();
@@ -884,6 +938,71 @@ export default function PronosticosPage() {
                           )}
                         </div>
                       )}
+
+                      {/* Sección de Tendencias de la Comunidad */}
+                      {(() => {
+                        const stats = getMatchCommunityStats(match.id, isKO);
+                        return (
+                          <div className="mt-3 pt-3 border-t border-line/30 flex flex-col gap-2">
+                            <div className="flex items-center justify-between text-[10px] text-content-muted font-bold uppercase">
+                              <span>Comunidad:</span>
+                              {stats.total > 0 ? (
+                                <button
+                                  onClick={() => setSelectedMatchForStats(match)}
+                                  className="flex items-center gap-1 text-brand hover:text-brand-hover hover:underline transition-all font-semibold cursor-pointer"
+                                >
+                                  <Users size={11} />
+                                  Ver todos ({stats.total})
+                                </button>
+                              ) : (
+                                <span className="italic normal-case font-normal text-[9px]">Sin datos</span>
+                              )}
+                            </div>
+
+                            {stats.total > 0 && (
+                              <div className="space-y-1.5">
+                                {/* Barra de porcentajes tricolor */}
+                                <div className="w-full h-2 rounded-full overflow-hidden bg-line/20 flex shadow-inner">
+                                  {stats.localPct > 0 && (
+                                    <div 
+                                      className="h-full bg-emerald-500 transition-all duration-500" 
+                                      style={{ width: `${stats.localPct}%` }}
+                                      title={`Local: ${stats.localPct}%`}
+                                    />
+                                  )}
+                                  {stats.drawPct > 0 && (
+                                    <div 
+                                      className="h-full bg-slate-400 transition-all duration-500" 
+                                      style={{ width: `${stats.drawPct}%` }}
+                                      title={`Empate: ${stats.drawPct}%`}
+                                    />
+                                  )}
+                                  {stats.awayPct > 0 && (
+                                    <div 
+                                      className="h-full bg-blue-500 transition-all duration-500" 
+                                      style={{ width: `${stats.awayPct}%` }}
+                                      title={`Visitante: ${stats.awayPct}%`}
+                                    />
+                                  )}
+                                </div>
+
+                                {/* Etiquetas detalladas */}
+                                <div className="flex items-center justify-between text-[9px] text-content-muted leading-tight font-medium">
+                                  <span>{teams.homeTeam?.code || "L"}: {stats.localPct}%</span>
+                                  <span>Empate: {stats.drawPct}%</span>
+                                  <span>{teams.awayTeam?.code || "V"}: {stats.awayPct}%</span>
+                                </div>
+
+                                {stats.consensoScore && (
+                                  <div className="text-[9px] text-center text-brand/90 font-semibold mt-0.5">
+                                    Consenso: {stats.consensoScore.replace("-", " - ")} ({stats.consensoPct}%)
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 );
@@ -1515,6 +1634,249 @@ export default function PronosticosPage() {
           </div>
         </div>
       )}
+
+      {/* Modal: Estadísticas y Muro de Pronósticos del Partido */}
+      {selectedMatchForStats && (() => {
+        const match = selectedMatchForStats;
+        const isKO = match.id.startsWith("M");
+        const teams = getMatchTeams(match);
+        const official = officialMatchesMap[match.id];
+        const stats = getMatchCommunityStats(match.id, isKO);
+        
+        // Filtrar los usuarios que tienen predicción para este partido
+        const userPreds = users
+          .map(u => {
+            const pred = isKO ? u.knockoutPredictions?.[match.id] : u.predictions?.[match.id];
+            return {
+              user: u,
+              pred,
+              hasPred: pred && pred.homeGoals !== null && pred.awayGoals !== null
+            };
+          })
+          // Ordenar de forma que los que tienen predicción vayan primero, ordenados por puntos de mayor a menor
+          .sort((a, b) => b.user.points - a.user.points);
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-base-dark/80 backdrop-blur-md p-4">
+            <div className="glass-panel w-full max-w-lg max-h-[85vh] flex flex-col border border-line overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+              
+              {/* Cabecera del modal */}
+              <div className="flex items-center justify-between border-b border-line p-4 bg-panel/30">
+                <div className="flex items-center gap-2">
+                  <BarChart3 size={18} className="text-brand animate-pulse" />
+                  <span className="text-sm font-bold text-content uppercase tracking-wider">Pronósticos de la Comunidad</span>
+                </div>
+                <button
+                  onClick={() => setSelectedMatchForStats(null)}
+                  className="p-1.5 rounded-lg text-content-muted hover:text-content hover:bg-panel transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Contenido con scroll */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-6">
+                
+                {/* Enfrentamiento principal */}
+                <div className="bg-panel/20 border border-line/50 rounded-2xl p-4 flex flex-col items-center">
+                  <span className="text-[10px] font-bold text-brand uppercase tracking-wider mb-2">
+                    {isKO ? (ROUND_NAMES[(match as any).round] || (match as any).round) : `Grupo ${(match as any).group}`} · {match.id}
+                  </span>
+                  
+                  <div className="flex items-center justify-between w-full max-w-xs gap-4 my-2">
+                    {/* Equipo Local */}
+                    <div className="flex flex-col items-center text-center flex-1 min-w-0">
+                      {teams.homeTeam ? (
+                        <>
+                          <Flag iso2={teams.homeTeam.iso2} name={teams.homeTeam.name} size="md" />
+                          <span className="text-xs font-bold text-content mt-2 truncate w-full">{teams.homeTeam.name}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="w-8 h-6 rounded bg-line/40 shrink-0"></span>
+                          <span className="text-[10px] text-content-muted italic mt-2 truncate w-full">TBD</span>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Versus / Marcador oficial */}
+                    <div className="flex flex-col items-center justify-center">
+                      {official ? (
+                        <div className="flex items-center gap-2 px-3 py-1 bg-panel border border-line rounded-lg text-sm font-extrabold text-content">
+                          <span>{official.home_goals}</span>
+                          <span className="text-content-muted font-normal text-xs">vs</span>
+                          <span>{official.away_goals}</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs font-black text-content-muted/60 tracking-wider">VS</span>
+                      )}
+                      <span className="text-[9px] text-content-muted font-semibold mt-1">
+                        {MATCH_SCHEDULES[match.id]?.time || ""} hs
+                      </span>
+                    </div>
+
+                    {/* Equipo Visitante */}
+                    <div className="flex flex-col items-center text-center flex-1 min-w-0">
+                      {teams.awayTeam ? (
+                        <>
+                          <Flag iso2={teams.awayTeam.iso2} name={teams.awayTeam.name} size="md" />
+                          <span className="text-xs font-bold text-content mt-2 truncate w-full">{teams.awayTeam.name}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="w-8 h-6 rounded bg-line/40 shrink-0"></span>
+                          <span className="text-[10px] text-content-muted italic mt-2 truncate w-full">TBD</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Gráfico de barras de tendencias */}
+                {stats.total > 0 ? (
+                  <div className="space-y-4 bg-panel/10 border border-line/40 rounded-2xl p-4">
+                    <h4 className="text-xs font-bold text-content-muted uppercase tracking-wider flex items-center gap-1.5">
+                      <BarChart3 size={13} className="text-brand" /> Distribución de Tendencias
+                    </h4>
+                    
+                    {/* Barra tricolor */}
+                    <div className="w-full h-4 rounded-full overflow-hidden bg-line/20 flex shadow-inner">
+                      {stats.localPct > 0 && (
+                        <div 
+                          className="h-full bg-emerald-500 flex items-center justify-center text-[9px] font-black text-white transition-all duration-500" 
+                          style={{ width: `${stats.localPct}%` }}
+                        >
+                          {stats.localPct >= 15 && `${stats.localPct}%`}
+                        </div>
+                      )}
+                      {stats.drawPct > 0 && (
+                        <div 
+                          className="h-full bg-slate-400 flex items-center justify-center text-[9px] font-black text-white transition-all duration-500" 
+                          style={{ width: `${stats.drawPct}%` }}
+                        >
+                          {stats.drawPct >= 15 && `${stats.drawPct}%`}
+                        </div>
+                      )}
+                      {stats.awayPct > 0 && (
+                        <div 
+                          className="h-full bg-blue-500 flex items-center justify-center text-[9px] font-black text-white transition-all duration-500" 
+                          style={{ width: `${stats.awayPct}%` }}
+                        >
+                          {stats.awayPct >= 15 && `${stats.awayPct}%`}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Leyendas explicativas */}
+                    <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                      <div className="flex flex-col p-1 bg-emerald-500/10 rounded border border-emerald-500/20">
+                        <span className="text-emerald-400 font-extrabold">{stats.localPct}%</span>
+                        <span className="text-[9px] text-content-muted">Gana {teams.homeTeam?.name || "Local"}</span>
+                      </div>
+                      <div className="flex flex-col p-1 bg-slate-500/10 rounded border border-slate-500/20">
+                        <span className="text-slate-400 font-extrabold">{stats.drawPct}%</span>
+                        <span className="text-[9px] text-content-muted">Empate</span>
+                      </div>
+                      <div className="flex flex-col p-1 bg-blue-500/10 rounded border border-blue-500/20">
+                        <span className="text-blue-400 font-extrabold">{stats.awayPct}%</span>
+                        <span className="text-[9px] text-content-muted">Gana {teams.awayTeam?.name || "Visitante"}</span>
+                      </div>
+                    </div>
+
+                    {stats.consensoScore && (
+                      <div className="pt-2 border-t border-line/30 flex items-center justify-between text-xs">
+                        <span className="text-content-muted">Consenso (Marcador favorito):</span>
+                        <span className="font-extrabold text-brand bg-brand/10 border border-brand/20 px-2 py-0.5 rounded">
+                          {stats.consensoScore.replace("-", " - ")} ({stats.consensoPct}%)
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-xs text-content-muted italic">
+                    Aún no hay predicciones aprobadas de la comunidad para este partido.
+                  </div>
+                )}
+
+                {/* Muro de Jugadores */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold text-content-muted uppercase tracking-wider flex items-center gap-1.5">
+                    <Users size={13} className="text-brand" /> Muro de Pronósticos ({userPreds.filter(p => p.hasPred).length})
+                  </h4>
+                  
+                  <div className="border border-line/60 rounded-xl divide-y divide-line/40 overflow-hidden bg-base/20 max-h-60 overflow-y-auto">
+                    {userPreds.map(({ user: u, pred, hasPred }, idx) => {
+                      // Si el administrador está logueado, mostrar alias si lo tiene
+                      const displayName = currentUsername.toLowerCase() === "vicdaddy" && u.aliasName 
+                        ? `${u.username} (${u.aliasName})`
+                        : u.username;
+
+                      // Si es el usuario actual, destacamos su fila
+                      const isCurrentUser = u.id === currentUserId;
+
+                      // Puntos ganados en este partido si hay resultado
+                      let matchPts: number | null = null;
+                      if (hasPred && official) {
+                        matchPts = calculateMatchPoints(pred!.homeGoals!, pred!.awayGoals!, official.home_goals, official.away_goals);
+                      }
+
+                      return (
+                        <div 
+                          key={u.id}
+                          className={`flex items-center justify-between px-3.5 py-2.5 text-xs transition-colors ${
+                            isCurrentUser ? "bg-brand/5 border-l-2 border-l-brand" : "hover:bg-panel/20"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-[10px] text-content-muted/80 font-mono w-4 text-right shrink-0">#{idx + 1}</span>
+                            <span className={`font-semibold truncate ${isCurrentUser ? "text-brand" : "text-content"}`}>
+                              {displayName}
+                            </span>
+                            <span className="text-[9px] text-content-muted bg-panel px-1.5 py-0.2 rounded-full shrink-0">
+                              {u.points} pts
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-3 shrink-0">
+                            {hasPred ? (
+                              <>
+                                <span className="font-extrabold text-content bg-base border border-line/60 px-2 py-0.5 rounded font-mono">
+                                  {pred!.homeGoals} - {pred!.awayGoals}
+                                </span>
+                                {matchPts !== null && (
+                                  <span className={`text-[10px] font-black ${
+                                    matchPts > 0 ? "text-emerald-400" : "text-red-400"
+                                  }`}>
+                                    +{matchPts} pts
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-[10px] text-content-muted/60 italic">Sin pronóstico</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Pie del modal */}
+              <div className="border-t border-line p-4 bg-panel/20 flex justify-end">
+                <button
+                  onClick={() => setSelectedMatchForStats(null)}
+                  className="btn-primary py-2 px-4 text-xs font-bold shadow-md cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
 
       {/* =========================================
           MODAL: DETALLE DE QUINIELA DEL USUARIO
