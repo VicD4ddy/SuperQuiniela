@@ -15,6 +15,11 @@ import {
   calculateGroupStandings,
   MATCH_SCHEDULES,
   ROUND_NAMES,
+  R32_MATCHES,
+  R16_MATCHES,
+  QF_MATCHES,
+  SF_MATCHES,
+  FINAL_MATCHES,
 } from "@/lib/worldCupData";
 import { calculateMatchPoints, getDetailedMatchScoring, calculateTournamentBonuses, calculateUserPoints } from "@/scoringEngine";
 import KnockoutBracket from "@/components/predictions/KnockoutBracket";
@@ -503,6 +508,309 @@ export default function PronosticosPage() {
     } catch (err) {
       console.error("Error al generar PDF:", err);
       alert("Ocurrió un error al generar el PDF de pronósticos.");
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
+  const downloadKnockoutPredictionsPDF = async () => {
+    setIsGeneratingPDF(true);
+    setPdfStep("Inicializando...");
+    try {
+      const { default: jsPDF } = await import("jspdf");
+      const { default: autoTable } = await import("jspdf-autotable");
+
+      // 1. Cargar todas las banderas en base64 si no están en caché
+      setPdfStep("Banderas (flagcdn)...");
+      const teamsList = Object.values(TEAMS);
+      const flagPromises = teamsList.map(async (team) => {
+        if (flagCache[team.iso2]) return;
+        try {
+          const url = `https://flagcdn.com/w20/${team.iso2}.png`;
+          const res = await fetch(url);
+          const blob = await res.blob();
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+          flagCache[team.iso2] = base64;
+        } catch (err) {
+          console.error(`Error cargando bandera de ${team.name}:`, err);
+        }
+      });
+      await Promise.all(flagPromises);
+
+      // 2. Preparar la lista de usuarios incluyendo a Vicdaddy si no está en el listado de aprobados
+      setPdfStep("Compilando datos...");
+      let pdfUsers = [...users];
+      const hasVicdaddy = pdfUsers.some(u => u.username.toLowerCase() === "vicdaddy");
+      if (!hasVicdaddy) {
+        const { data: allQ } = await supabase
+          .from("user_quinielas")
+          .select(`
+            user_id,
+            predictions,
+            knockout_predictions,
+            alias_name,
+            profiles (username)
+          `);
+        
+        const vicdaddyRow = (allQ || []).find((row: any) => row.profiles?.username?.toLowerCase() === "vicdaddy");
+        if (vicdaddyRow) {
+          // Cargar partidos oficiales para calcular el puntaje actual
+          const { data: officialMatchesData } = await supabase
+            .from("official_matches")
+            .select("*");
+          const officialMatches = officialMatchesData || [];
+          
+          const scoring = calculateUserPoints(
+            vicdaddyRow.predictions || {},
+            vicdaddyRow.knockout_predictions || {},
+            officialMatches
+          );
+          
+          pdfUsers.push({
+            id: vicdaddyRow.user_id,
+            username: (vicdaddyRow.profiles as any)?.username || "Vicdaddy",
+            aliasName: vicdaddyRow.alias_name || "",
+            points: scoring.totalPoints,
+            predictions: vicdaddyRow.predictions || {},
+            knockoutPredictions: vicdaddyRow.knockout_predictions || {},
+            championCode: "TBD",
+            runnerUpCode: "TBD"
+          });
+        }
+      }
+
+      // Ordenar por puntos (manteniendo a los mejores arriba)
+      setPdfStep("Generando PDF...");
+      pdfUsers.sort((a, b) => b.points - a.points);
+
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      pdfUsers.forEach((user, index) => {
+        if (index > 0) {
+          doc.addPage();
+        }
+
+        // Encabezado principal de la página
+        doc.setFillColor(15, 23, 42); // Slate-900
+        doc.rect(0, 0, 210, 32, "F");
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.text("Quiniela 2026 - Fase Eliminatoria", 14, 13);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        doc.setTextColor(156, 163, 175); // Gray-400
+        doc.text("Participante: ", 14, 21);
+        
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(0, 176, 107); // Brand Green
+        doc.text(user.username, 37, 21);
+
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(9);
+        doc.text(`Puntos acumulados: ${user.points} PTS`, 14, 27);
+
+        const today = new Date().toLocaleDateString("es-MX", {
+          day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"
+        });
+        doc.setFontSize(8);
+        doc.setTextColor(156, 163, 175);
+        doc.text(`Generado: ${today}`, 150, 13);
+
+        // Resolver el bracket dinámico para este usuario
+        const userGroupResults = getGroupResults(user.predictions || {});
+        const userBracket = resolveKnockoutBracket(userGroupResults, user.knockoutPredictions || {});
+
+        // Preparar datos de las tablas
+        const leftTableData: any[] = [];
+        const rightTableData: any[] = [];
+
+        // Columna Izquierda: Ronda de 32 (M73 a M88)
+        const leftMatchIds = R32_MATCHES.map(m => m.id);
+        
+        // Columna Derecha: Ronda de 16 (M89 a M96), Cuartos (M97 a M100), Semis (M101-M102), 3er Puesto (M103) y Final (M104)
+        const rightMatchIds = [
+          ...R16_MATCHES.map(m => m.id),
+          ...QF_MATCHES.map(m => m.id),
+          ...SF_MATCHES.map(m => m.id),
+          ...FINAL_MATCHES.map(m => m.id)
+        ];
+
+        // Función para resolver nombre corto de ronda para la tabla
+        const getRoundAbbreviation = (id: string): string => {
+          if (id.startsWith("M7") || id.startsWith("M8") && parseInt(id.substring(1)) <= 88) return "R32";
+          if (parseInt(id.substring(1)) <= 96) return "R16";
+          if (parseInt(id.substring(1)) <= 100) return "Cuartos";
+          if (parseInt(id.substring(1)) <= 102) return "Semifinal";
+          if (id === "M103") return "3er Puesto";
+          return "Final";
+        };
+
+        // Generar filas para columna izquierda
+        leftMatchIds.forEach((matchId) => {
+          const slotTeams = userBracket[matchId] || { home: "", away: "" };
+          const homeTeam = slotTeams.home || "TBD";
+          const awayTeam = slotTeams.away || "TBD";
+          const pred = user.knockoutPredictions[matchId];
+          const predStr = (pred && pred.homeGoals !== null && pred.awayGoals !== null) 
+            ? `${pred.homeGoals} - ${pred.awayGoals}` 
+            : "-";
+          leftTableData.push([getRoundAbbreviation(matchId), "", homeTeam, "vs", awayTeam, "", predStr]);
+        });
+
+        // Generar filas para columna derecha
+        rightMatchIds.forEach((matchId) => {
+          const slotTeams = userBracket[matchId] || { home: "", away: "" };
+          const homeTeam = slotTeams.home || "TBD";
+          const awayTeam = slotTeams.away || "TBD";
+          const pred = user.knockoutPredictions[matchId];
+          const predStr = (pred && pred.homeGoals !== null && pred.awayGoals !== null) 
+            ? `${pred.homeGoals} - ${pred.awayGoals}` 
+            : "-";
+          rightTableData.push([getRoundAbbreviation(matchId), "", homeTeam, "vs", awayTeam, "", predStr]);
+        });
+
+        // Dibujar Tabla Izquierda
+        autoTable(doc, {
+          head: [["Fase", "", "Local", "vs", "Vis.", "", "Pronóstico"]],
+          body: leftTableData,
+          startY: 38,
+          margin: { left: 14, right: 108 },
+          styles: { 
+            fontSize: 7.5, 
+            cellPadding: 2.5,
+            fillColor: [255, 255, 255],
+            textColor: [15, 23, 42],
+            lineColor: [226, 232, 240],
+            lineWidth: 0.1,
+          },
+          headStyles: {
+            fillColor: [15, 23, 42],
+            textColor: [255, 255, 255],
+            fontSize: 7.5,
+            fontStyle: "bold",
+          },
+          alternateRowStyles: {
+            fillColor: [248, 250, 252],
+          },
+          columnStyles: {
+            0: { cellWidth: 14, halign: "center" },
+            1: { cellWidth: 8, halign: "center" }, // Espacio para Bandera Local
+            2: { cellWidth: 12, halign: "right", fontStyle: "bold" },
+            3: { cellWidth: 8, halign: "center", textColor: [156, 163, 175] },
+            4: { cellWidth: 12, halign: "left", fontStyle: "bold" },
+            5: { cellWidth: 8, halign: "center" }, // Espacio para Bandera Vis.
+            6: { cellWidth: 26, halign: "center", fontStyle: "bold", textColor: [0, 176, 107] },
+          },
+          theme: "grid",
+          didDrawCell: (data: any) => {
+            if (data.section === "body") {
+              const rowIndex = data.row.index;
+              const matchId = leftMatchIds[rowIndex];
+              const slotTeams = userBracket[matchId];
+              if (!slotTeams) return;
+
+              if (data.column.index === 1 && slotTeams.home) {
+                const base64 = flagCache[TEAMS[slotTeams.home]?.iso2];
+                if (base64) {
+                  const x = data.cell.x + (data.cell.width - 5.5) / 2;
+                  const y = data.cell.y + (data.cell.height - 3.8) / 2;
+                  doc.addImage(base64, "PNG", x, y, 5.5, 3.8);
+                }
+              } else if (data.column.index === 5 && slotTeams.away) {
+                const base64 = flagCache[TEAMS[slotTeams.away]?.iso2];
+                if (base64) {
+                  const x = data.cell.x + (data.cell.width - 5.5) / 2;
+                  const y = data.cell.y + (data.cell.height - 3.8) / 2;
+                  doc.addImage(base64, "PNG", x, y, 5.5, 3.8);
+                }
+              }
+            }
+          }
+        });
+
+        // Dibujar Tabla Derecha
+        autoTable(doc, {
+          head: [["Fase", "", "Local", "vs", "Vis.", "", "Pronóstico"]],
+          body: rightTableData,
+          startY: 38,
+          margin: { left: 110, right: 14 },
+          styles: { 
+            fontSize: 7.5, 
+            cellPadding: 2.5,
+            fillColor: [255, 255, 255],
+            textColor: [15, 23, 42],
+            lineColor: [226, 232, 240],
+            lineWidth: 0.1,
+          },
+          headStyles: {
+            fillColor: [15, 23, 42],
+            textColor: [255, 255, 255],
+            fontSize: 7.5,
+            fontStyle: "bold",
+          },
+          alternateRowStyles: {
+            fillColor: [248, 250, 252],
+          },
+          columnStyles: {
+            0: { cellWidth: 14, halign: "center" },
+            1: { cellWidth: 8, halign: "center" }, // Espacio para Bandera Local
+            2: { cellWidth: 12, halign: "right", fontStyle: "bold" },
+            3: { cellWidth: 8, halign: "center", textColor: [156, 163, 175] },
+            4: { cellWidth: 12, halign: "left", fontStyle: "bold" },
+            5: { cellWidth: 8, halign: "center" }, // Espacio para Bandera Vis.
+            6: { cellWidth: 26, halign: "center", fontStyle: "bold", textColor: [0, 176, 107] },
+          },
+          theme: "grid",
+          didDrawCell: (data: any) => {
+            if (data.section === "body") {
+              const rowIndex = data.row.index;
+              const matchId = rightMatchIds[rowIndex];
+              const slotTeams = userBracket[matchId];
+              if (!slotTeams) return;
+
+              if (data.column.index === 1 && slotTeams.home) {
+                const base64 = flagCache[TEAMS[slotTeams.home]?.iso2];
+                if (base64) {
+                  const x = data.cell.x + (data.cell.width - 5.5) / 2;
+                  const y = data.cell.y + (data.cell.height - 3.8) / 2;
+                  doc.addImage(base64, "PNG", x, y, 5.5, 3.8);
+                }
+              } else if (data.column.index === 5 && slotTeams.away) {
+                const base64 = flagCache[TEAMS[slotTeams.away]?.iso2];
+                if (base64) {
+                  const x = data.cell.x + (data.cell.width - 5.5) / 2;
+                  const y = data.cell.y + (data.cell.height - 3.8) / 2;
+                  doc.addImage(base64, "PNG", x, y, 5.5, 3.8);
+                }
+              }
+            }
+          }
+        });
+
+        // Agregar pie de página para cada usuario
+        doc.setFontSize(7);
+        doc.setTextColor(148, 163, 184); // Slate-400
+        doc.text(`SuperQuiniela 2026 - Pág. ${index + 1} de ${pdfUsers.length}`, 14, 287);
+        doc.text("Transparencia y deportividad · Todos los pronósticos están congelados al inicio del torneo.", 75, 287);
+      });
+
+      doc.save("Quiniela_2026_Pronosticos_Eliminatorias.pdf");
+    } catch (err) {
+      console.error("Error al generar PDF de eliminatorias:", err);
+      alert("Ocurrió un error al generar el PDF de eliminatorias.");
     } finally {
       setIsGeneratingPDF(false);
     }
@@ -1072,24 +1380,44 @@ export default function PronosticosPage() {
           </button>
         </div>
 
-        {/* PDF Download Button */}
-        <button
-          onClick={downloadGroupPredictionsPDF}
-          disabled={isGeneratingPDF || isLoading || users.length === 0}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-600/40 text-white rounded-lg text-xs font-bold transition-all shadow-[0_0_12px_rgba(220,38,38,0.25)] active:scale-95 disabled:scale-100 disabled:opacity-50 select-none cursor-pointer disabled:cursor-not-allowed"
-        >
-          {isGeneratingPDF ? (
-            <>
-              <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              <span className="animate-pulse">{pdfStep}</span>
-            </>
-          ) : (
-            <>
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
-              <span>Descargar PDF Fase de Grupos</span>
-            </>
-          )}
-        </button>
+        {/* PDF Download Buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={downloadGroupPredictionsPDF}
+            disabled={isGeneratingPDF || isLoading || users.length === 0}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-600/40 text-white rounded-lg text-xs font-bold transition-all shadow-[0_0_12px_rgba(220,38,38,0.25)] active:scale-95 disabled:scale-100 disabled:opacity-50 select-none cursor-pointer disabled:cursor-not-allowed"
+          >
+            {isGeneratingPDF ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span className="animate-pulse">{pdfStep}</span>
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+                <span>Descargar PDF Grupos</span>
+              </>
+            )}
+          </button>
+          
+          <button
+            onClick={downloadKnockoutPredictionsPDF}
+            disabled={isGeneratingPDF || isLoading || users.length === 0}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-600/40 text-white rounded-lg text-xs font-bold transition-all shadow-[0_0_12px_rgba(220,38,38,0.25)] active:scale-95 disabled:scale-100 disabled:opacity-50 select-none cursor-pointer disabled:cursor-not-allowed"
+          >
+            {isGeneratingPDF ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span className="animate-pulse">{pdfStep}</span>
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+                <span>Descargar PDF Eliminatorias</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* =========================================
