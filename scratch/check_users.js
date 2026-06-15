@@ -6,20 +6,24 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 async function check() {
-  const { data: officialMatches, error: err } = await supabase
-    .from('official_matches')
-    .select('*');
-    
-  if (err) {
-    console.error('Error:', err);
-    return;
-  }
+  console.log('--- DIAGNÓSTICO DE QUINIELAS ---');
   
-  console.log(`Partidos oficiales registrados: ${officialMatches.length}`);
-  const withScore = officialMatches.filter(m => m.home_goals !== null && m.away_goals !== null);
-  console.log(`Partidos con resultado guardado: ${withScore.length}`);
-  if (withScore.length > 0) {
-    console.log('Marcadores registrados:', withScore.map(m => `${m.match_id}: ${m.home_goals}-${m.away_goals}`));
+  const { data: quinielas, error: qError } = await supabase
+    .from('user_quinielas')
+    .select(`
+      user_id,
+      status,
+      alias_name,
+      profiles (username)
+    `);
+    
+  if (qError) {
+    console.error('Error al obtener quinielas:', qError);
+  } else {
+    console.log(`Total quinielas registradas: ${quinielas.length}`);
+    quinielas.forEach((q, idx) => {
+      console.log(`${idx + 1}. User: ${q.profiles?.username || 'N/A'} | Alias: ${q.alias_name || 'N/A'} | Status: ${q.status}`);
+    });
   }
 }
 

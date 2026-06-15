@@ -266,54 +266,48 @@ export default function PronosticosPage() {
       });
       await Promise.all(flagPromises);
 
-      // 2. Preparar la lista de usuarios incluyendo a Vicdaddy si no está en el listado de aprobados
+      // 2. Preparar la lista de usuarios obteniendo todos los registros de la BD
       setPdfStep("Compilando datos...");
-      let pdfUsers = [...users];
-      const hasVicdaddy = pdfUsers.some(u => u.username.toLowerCase() === "vicdaddy");
-      if (!hasVicdaddy) {
-        const { data: allQ } = await supabase
-          .from("user_quinielas")
-          .select(`
-            user_id,
-            predictions,
-            knockout_predictions,
-            alias_name,
-            profiles (username)
-          `);
+      const { data: officialMatchesData } = await supabase
+        .from("official_matches")
+        .select("*");
+      const officialMatches = officialMatchesData || [];
+
+      const { data: allQ, error: qError } = await supabase
+        .from("user_quinielas")
+        .select(`
+          user_id,
+          predictions,
+          knockout_predictions,
+          alias_name,
+          status,
+          profiles (username)
+        `);
+
+      if (qError) throw qError;
+
+      let pdfUsers = (allQ || []).map((row: any) => {
+        const scoring = calculateUserPoints(
+          row.predictions || {},
+          row.knockout_predictions || {},
+          officialMatches
+        );
         
-        const vicdaddyRow = (allQ || []).find((row: any) => row.profiles?.username?.toLowerCase() === "vicdaddy");
-        if (vicdaddyRow) {
-          // Cargar partidos oficiales para calcular el puntaje actual
-          const { data: officialMatchesData } = await supabase
-            .from("official_matches")
-            .select("*");
-          const officialMatches = officialMatchesData || [];
-          
-          const scoring = calculateUserPoints(
-            vicdaddyRow.predictions || {},
-            vicdaddyRow.knockout_predictions || {},
-            officialMatches
-          );
-          
-          pdfUsers.push({
-            id: vicdaddyRow.user_id,
-            username: (vicdaddyRow.profiles as any)?.username || "Vicdaddy",
-            aliasName: vicdaddyRow.alias_name || "",
-            points: scoring.totalPoints,
-            predictions: vicdaddyRow.predictions || {},
-            knockoutPredictions: vicdaddyRow.knockout_predictions || {},
-            championCode: "TBD",
-            runnerUpCode: "TBD"
-          });
-        }
-      }
+        return {
+          id: row.user_id,
+          username: row.profiles?.username || "Usuario",
+          aliasName: row.alias_name || "",
+          points: scoring.totalPoints,
+          predictions: row.predictions || {},
+          knockoutPredictions: row.knockout_predictions || {},
+          championCode: "TBD",
+          runnerUpCode: "TBD"
+        };
+      });
 
       // Ordenar por puntos (manteniendo a los mejores arriba)
       setPdfStep("Generando PDF...");
       pdfUsers.sort((a, b) => b.points - a.points);
-      console.log("PDF Users Count:", pdfUsers.length);
-      console.log("PDF Users list:", pdfUsers.map(u => u.username));
-
       const doc = new jsPDF({
         orientation: "portrait",
         unit: "mm",
@@ -518,7 +512,6 @@ export default function PronosticosPage() {
     setPdfStep("Inicializando...");
     try {
       const { default: jsPDF } = await import("jspdf");
-      const { default: autoTable } = await import("jspdf-autotable");
 
       // 1. Cargar todas las banderas en base64 si no están en caché
       setPdfStep("Banderas (flagcdn)...");
@@ -544,267 +537,414 @@ export default function PronosticosPage() {
 
       // 2. Preparar la lista de usuarios incluyendo a Vicdaddy si no está en el listado de aprobados
       setPdfStep("Compilando datos...");
-      let pdfUsers = [...users];
-      const hasVicdaddy = pdfUsers.some(u => u.username.toLowerCase() === "vicdaddy");
-      if (!hasVicdaddy) {
-        const { data: allQ } = await supabase
-          .from("user_quinielas")
-          .select(`
-            user_id,
-            predictions,
-            knockout_predictions,
-            alias_name,
-            profiles (username)
-          `);
+      // 2. Preparar la lista de usuarios obteniendo todos los registros de la BD
+      setPdfStep("Compilando datos...");
+      const { data: officialMatchesData } = await supabase
+        .from("official_matches")
+        .select("*");
+      const officialMatches = officialMatchesData || [];
+
+      const { data: allQ, error: qError } = await supabase
+        .from("user_quinielas")
+        .select(`
+          user_id,
+          predictions,
+          knockout_predictions,
+          alias_name,
+          status,
+          profiles (username)
+        `);
+
+      if (qError) throw qError;
+
+      let pdfUsers = (allQ || []).map((row: any) => {
+        const scoring = calculateUserPoints(
+          row.predictions || {},
+          row.knockout_predictions || {},
+          officialMatches
+        );
         
-        const vicdaddyRow = (allQ || []).find((row: any) => row.profiles?.username?.toLowerCase() === "vicdaddy");
-        if (vicdaddyRow) {
-          // Cargar partidos oficiales para calcular el puntaje actual
-          const { data: officialMatchesData } = await supabase
-            .from("official_matches")
-            .select("*");
-          const officialMatches = officialMatchesData || [];
-          
-          const scoring = calculateUserPoints(
-            vicdaddyRow.predictions || {},
-            vicdaddyRow.knockout_predictions || {},
-            officialMatches
-          );
-          
-          pdfUsers.push({
-            id: vicdaddyRow.user_id,
-            username: (vicdaddyRow.profiles as any)?.username || "Vicdaddy",
-            aliasName: vicdaddyRow.alias_name || "",
-            points: scoring.totalPoints,
-            predictions: vicdaddyRow.predictions || {},
-            knockoutPredictions: vicdaddyRow.knockout_predictions || {},
-            championCode: "TBD",
-            runnerUpCode: "TBD"
-          });
-        }
-      }
+        return {
+          id: row.user_id,
+          username: row.profiles?.username || "Usuario",
+          aliasName: row.alias_name || "",
+          points: scoring.totalPoints,
+          predictions: row.predictions || {},
+          knockoutPredictions: row.knockout_predictions || {},
+          championCode: "TBD",
+          runnerUpCode: "TBD"
+        };
+      });
 
       // Ordenar por puntos (manteniendo a los mejores arriba)
       setPdfStep("Generando PDF...");
       pdfUsers.sort((a, b) => b.points - a.points);
 
       const doc = new jsPDF({
-        orientation: "portrait",
+        orientation: "landscape",
         unit: "mm",
         format: "a4",
       });
+
+      // Definir partidos por columnas (bracket FIFA 2026 de 32 equipos)
+      const col0Matches = ["M74", "M77", "M73", "M75", "M83", "M84", "M81", "M82"];
+      const col1Matches = ["M89", "M90", "M91", "M92"];
+      const col2Matches = ["M97", "M98"];
+      const col3Matches = ["M101"];
+      // Col 4 es Final ("M104") y 3RD ("M103")
+      const col5Matches = ["M102"];
+      const col6Matches = ["M99", "M100"];
+      const col7Matches = ["M93", "M94", "M95", "M96"];
+      const col8Matches = ["M76", "M78", "M79", "M80", "M86", "M88", "M85", "M87"];
+
+      const colX = [10, 41.375, 72.75, 104.125, 135.5, 166.875, 198.25, 229.625, 261.0];
+      const boxWidth = 26;
+      const boxHeight = 13;
 
       pdfUsers.forEach((user, index) => {
         if (index > 0) {
           doc.addPage();
         }
 
-        // Encabezado principal de la página
+        // Encabezado principal de la página (Landscape banner)
         doc.setFillColor(15, 23, 42); // Slate-900
-        doc.rect(0, 0, 210, 32, "F");
+        doc.rect(0, 0, 297, 22, "F");
 
         doc.setTextColor(255, 255, 255);
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(16);
-        doc.text("Quiniela 2026 - Fase Eliminatoria", 14, 13);
+        doc.setFontSize(14);
+        doc.text("SuperQuiniela 2026 - Fase Eliminatoria", 10, 8);
 
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(10);
+        doc.setFontSize(9);
         doc.setTextColor(156, 163, 175); // Gray-400
-        doc.text("Participante: ", 14, 21);
+        doc.text("Participante: ", 10, 15);
         
         doc.setFont("helvetica", "bold");
         doc.setTextColor(0, 176, 107); // Brand Green
-        doc.text(user.username, 37, 21);
+        doc.text(user.username, 29, 15);
 
         doc.setFont("helvetica", "normal");
         doc.setTextColor(255, 255, 255);
-        doc.setFontSize(9);
-        doc.text(`Puntos acumulados: ${user.points} PTS`, 14, 27);
+        doc.setFontSize(8.5);
+        doc.text(`Puntos acumulados: ${user.points} PTS`, 100, 15);
 
         const today = new Date().toLocaleDateString("es-MX", {
           day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"
         });
         doc.setFontSize(8);
         doc.setTextColor(156, 163, 175);
-        doc.text(`Generado: ${today}`, 150, 13);
+        doc.text(`Generado: ${today}`, 240, 8);
+
+        // Nombres de las rondas encima de cada columna
+        const roundTitles = [
+          "Ronda de 32",
+          "Octavos",
+          "Cuartos",
+          "Semifinal",
+          "F/3RD",
+          "Semifinal",
+          "Cuartos",
+          "Octavos",
+          "Ronda de 32"
+        ];
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(100, 116, 139); // slate-500
+        roundTitles.forEach((title, colIdx) => {
+          const xCenter = colX[colIdx] + boxWidth / 2;
+          doc.text(title, xCenter, 25, { align: "center" });
+        });
 
         // Resolver el bracket dinámico para este usuario
         const userGroupResults = getGroupResults(user.predictions || {});
         const userBracket = resolveKnockoutBracket(userGroupResults, user.knockoutPredictions || {});
 
-        // Preparar datos de las tablas
-        const leftTableData: any[] = [];
-        const rightTableData: any[] = [];
+        // Calcular posiciones Y de cada partido dinámicamente
+        const matchPositions: Record<string, { x: number; y: number }> = {};
 
-        // Columna Izquierda: Ronda de 32 (M73 a M88)
-        const leftMatchIds = R32_MATCHES.map(m => m.id);
-        
-        // Columna Derecha: Ronda de 16 (M89 a M96), Cuartos (M97 a M100), Semis (M101-M102), 3er Puesto (M103) y Final (M104)
-        const rightMatchIds = [
-          ...R16_MATCHES.map(m => m.id),
-          ...QF_MATCHES.map(m => m.id),
-          ...SF_MATCHES.map(m => m.id),
-          ...FINAL_MATCHES.map(m => m.id)
-        ];
+        // Lado Izquierdo
+        col0Matches.forEach((mId, i) => {
+          matchPositions[mId] = { x: colX[0], y: 28 + i * 22.2 };
+        });
+        col1Matches.forEach((mId, i) => {
+          const y0 = matchPositions[col0Matches[2*i]].y;
+          const y1 = matchPositions[col0Matches[2*i+1]].y;
+          matchPositions[mId] = { x: colX[1], y: (y0 + y1) / 2 };
+        });
+        col2Matches.forEach((mId, i) => {
+          const y0 = matchPositions[col1Matches[2*i]].y;
+          const y1 = matchPositions[col1Matches[2*i+1]].y;
+          matchPositions[mId] = { x: colX[2], y: (y0 + y1) / 2 };
+        });
+        col3Matches.forEach((mId, i) => {
+          const y0 = matchPositions[col2Matches[0]].y;
+          const y1 = matchPositions[col2Matches[1]].y;
+          matchPositions[mId] = { x: colX[3], y: (y0 + y1) / 2 };
+        });
 
-        // Función para resolver nombre corto de ronda para la tabla
-        const getRoundAbbreviation = (id: string): string => {
-          if (id.startsWith("M7") || id.startsWith("M8") && parseInt(id.substring(1)) <= 88) return "R32";
-          if (parseInt(id.substring(1)) <= 96) return "R16";
-          if (parseInt(id.substring(1)) <= 100) return "Cuartos";
-          if (parseInt(id.substring(1)) <= 102) return "Semifinal";
-          if (id === "M103") return "3er Puesto";
-          return "Final";
+        // Lado Derecho
+        col8Matches.forEach((mId, i) => {
+          matchPositions[mId] = { x: colX[8], y: 28 + i * 22.2 };
+        });
+        col7Matches.forEach((mId, i) => {
+          const y0 = matchPositions[col8Matches[2*i]].y;
+          const y1 = matchPositions[col8Matches[2*i+1]].y;
+          matchPositions[mId] = { x: colX[7], y: (y0 + y1) / 2 };
+        });
+        col6Matches.forEach((mId, i) => {
+          const y0 = matchPositions[col7Matches[2*i]].y;
+          const y1 = matchPositions[col7Matches[2*i+1]].y;
+          matchPositions[mId] = { x: colX[6], y: (y0 + y1) / 2 };
+        });
+        col5Matches.forEach((mId, i) => {
+          const y0 = matchPositions[col6Matches[0]].y;
+          const y1 = matchPositions[col6Matches[1]].y;
+          matchPositions[mId] = { x: colX[5], y: (y0 + y1) / 2 };
+        });
+
+        // Centro
+        matchPositions["M104"] = { x: colX[4], y: 94.6 }; // Gran Final
+        matchPositions["M103"] = { x: colX[4], y: 122.0 }; // Tercer Puesto
+
+        // Función auxiliar para dibujar conectores gráficos
+        const drawConnector = (
+          fromId: string,
+          toId: string,
+          side: "left" | "right",
+          isLowerSlot?: boolean
+        ) => {
+          const fromPos = matchPositions[fromId];
+          const toPos = matchPositions[toId];
+          if (!fromPos || !toPos) return;
+
+          const slotTeams = userBracket[fromId] || { home: "", away: "" };
+          const pred = user.knockoutPredictions[fromId];
+          const homeGoals = pred?.homeGoals;
+          const awayGoals = pred?.awayGoals;
+
+          let winnerCode = "";
+          if (slotTeams.home && slotTeams.away && homeGoals !== null && homeGoals !== undefined && awayGoals !== null && awayGoals !== undefined) {
+            winnerCode = homeGoals >= awayGoals ? slotTeams.home : slotTeams.away;
+          }
+
+          const targetSlotTeams = userBracket[toId] || { home: "", away: "" };
+          const isActive = !!winnerCode && (targetSlotTeams.home === winnerCode || targetSlotTeams.away === winnerCode);
+
+          if (isActive) {
+            doc.setDrawColor(0, 176, 107); // Verde actante
+            doc.setLineWidth(0.35);
+          } else {
+            doc.setDrawColor(226, 232, 240); // Gris pizarra suave
+            doc.setLineWidth(0.15);
+          }
+
+          const yFrom = fromPos.y + boxHeight / 2;
+          const yTo = toPos.y + (isLowerSlot ? 9.75 : 3.25);
+
+          if (side === "left") {
+            const xStart = fromPos.x + boxWidth;
+            const xEnd = toPos.x;
+            const xMid = (xStart + xEnd) / 2;
+
+            doc.line(xStart, yFrom, xMid, yFrom);
+            doc.line(xMid, yFrom, xMid, yTo);
+            doc.line(xMid, yTo, xEnd, yTo);
+          } else {
+            const xStart = fromPos.x;
+            const xEnd = toPos.x + boxWidth;
+            const xMid = (xStart + xEnd) / 2;
+
+            doc.line(xStart, yFrom, xMid, yFrom);
+            doc.line(xMid, yFrom, xMid, yTo);
+            doc.line(xMid, yTo, xEnd, yTo);
+          }
         };
 
-        // Generar filas para columna izquierda
-        leftMatchIds.forEach((matchId) => {
-          const slotTeams = userBracket[matchId] || { home: "", away: "" };
-          const homeTeam = slotTeams.home || "TBD";
-          const awayTeam = slotTeams.away || "TBD";
-          const pred = user.knockoutPredictions[matchId];
-          const predStr = (pred && pred.homeGoals !== null && pred.awayGoals !== null) 
-            ? `${pred.homeGoals} - ${pred.awayGoals}` 
-            : "-";
-          leftTableData.push([getRoundAbbreviation(matchId), "", homeTeam, "vs", awayTeam, "", predStr]);
-        });
+        // Dibujar Conectores Izquierdos
+        col0Matches.forEach((mId, i) => drawConnector(mId, col1Matches[Math.floor(i/2)], "left", i % 2 === 1));
+        col1Matches.forEach((mId, i) => drawConnector(mId, col2Matches[Math.floor(i/2)], "left", i % 2 === 1));
+        col2Matches.forEach((mId, i) => drawConnector(mId, col3Matches[0], "left", i === 1));
+        drawConnector(col3Matches[0], "M104", "left", false);
+        drawConnector(col3Matches[0], "M103", "left", false);
 
-        // Generar filas para columna derecha
-        rightMatchIds.forEach((matchId) => {
-          const slotTeams = userBracket[matchId] || { home: "", away: "" };
-          const homeTeam = slotTeams.home || "TBD";
-          const awayTeam = slotTeams.away || "TBD";
-          const pred = user.knockoutPredictions[matchId];
-          const predStr = (pred && pred.homeGoals !== null && pred.awayGoals !== null) 
-            ? `${pred.homeGoals} - ${pred.awayGoals}` 
-            : "-";
-          rightTableData.push([getRoundAbbreviation(matchId), "", homeTeam, "vs", awayTeam, "", predStr]);
-        });
+        // Dibujar Conectores Derechos
+        col8Matches.forEach((mId, i) => drawConnector(mId, col7Matches[Math.floor(i/2)], "right", i % 2 === 1));
+        col7Matches.forEach((mId, i) => drawConnector(mId, col6Matches[Math.floor(i/2)], "right", i % 2 === 1));
+        col6Matches.forEach((mId, i) => drawConnector(mId, col5Matches[0], "right", i === 1));
+        drawConnector(col5Matches[0], "M104", "right", true);
+        drawConnector(col5Matches[0], "M103", "right", true);
 
-        // Dibujar Tabla Izquierda
-        autoTable(doc, {
-          head: [["Fase", "", "Local", "vs", "Vis.", "", "Pronóstico"]],
-          body: leftTableData,
-          startY: 38,
-          margin: { left: 14, right: 108 },
-          styles: { 
-            fontSize: 7.5, 
-            cellPadding: 2.5,
-            fillColor: [255, 255, 255],
-            textColor: [15, 23, 42],
-            lineColor: [226, 232, 240],
-            lineWidth: 0.1,
-          },
-          headStyles: {
-            fillColor: [15, 23, 42],
-            textColor: [255, 255, 255],
-            fontSize: 7.5,
-            fontStyle: "bold",
-          },
-          alternateRowStyles: {
-            fillColor: [248, 250, 252],
-          },
-          columnStyles: {
-            0: { cellWidth: 14, halign: "center" },
-            1: { cellWidth: 8, halign: "center" }, // Espacio para Bandera Local
-            2: { cellWidth: 12, halign: "right", fontStyle: "bold" },
-            3: { cellWidth: 8, halign: "center", textColor: [156, 163, 175] },
-            4: { cellWidth: 12, halign: "left", fontStyle: "bold" },
-            5: { cellWidth: 8, halign: "center" }, // Espacio para Bandera Vis.
-            6: { cellWidth: 26, halign: "center", fontStyle: "bold", textColor: [0, 176, 107] },
-          },
-          theme: "grid",
-          didDrawCell: (data: any) => {
-            if (data.section === "body") {
-              const rowIndex = data.row.index;
-              const matchId = leftMatchIds[rowIndex];
-              const slotTeams = userBracket[matchId];
-              if (!slotTeams) return;
+        // Función auxiliar para dibujar cada tarjeta de partido (caja de 26x13)
+        const drawMatchCard = (mId: string) => {
+          const pos = matchPositions[mId];
+          if (!pos) return;
 
-              if (data.column.index === 1 && slotTeams.home) {
-                const base64 = flagCache[TEAMS[slotTeams.home]?.iso2];
-                if (base64) {
-                  const x = data.cell.x + (data.cell.width - 5.5) / 2;
-                  const y = data.cell.y + (data.cell.height - 3.8) / 2;
-                  doc.addImage(base64, "PNG", x, y, 5.5, 3.8);
-                }
-              } else if (data.column.index === 5 && slotTeams.away) {
-                const base64 = flagCache[TEAMS[slotTeams.away]?.iso2];
-                if (base64) {
-                  const x = data.cell.x + (data.cell.width - 5.5) / 2;
-                  const y = data.cell.y + (data.cell.height - 3.8) / 2;
-                  doc.addImage(base64, "PNG", x, y, 5.5, 3.8);
-                }
-              }
-            }
+          const slotTeams = userBracket[mId] || { home: "", away: "" };
+          const homeCode = slotTeams.home || "";
+          const awayCode = slotTeams.away || "";
+          const homeTeam = homeCode ? TEAMS[homeCode] : null;
+          const awayTeam = awayCode ? TEAMS[awayCode] : null;
+
+          const pred = user.knockoutPredictions[mId];
+          const homeGoals = pred?.homeGoals !== null && pred?.homeGoals !== undefined ? pred.homeGoals : null;
+          const awayGoals = pred?.awayGoals !== null && pred?.awayGoals !== undefined ? pred.awayGoals : null;
+
+          const hasBothTeams = !!homeTeam && !!awayTeam;
+          const homeWins = hasBothTeams && homeGoals !== null && awayGoals !== null && homeGoals > awayGoals;
+          const awayWins = hasBothTeams && homeGoals !== null && awayGoals !== null && awayGoals > homeGoals;
+
+          // Dibujar contenedor blanco con borde gris
+          doc.setFillColor(255, 255, 255);
+          doc.setDrawColor(203, 213, 225); // slate-300
+          doc.setLineWidth(0.15);
+          doc.rect(pos.x, pos.y, boxWidth, boxHeight, "FD");
+
+          // Dibujar indicador de ID de partido (ej. M74) arriba a la izquierda
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(5.5);
+          doc.setTextColor(148, 163, 184); // slate-400
+          doc.text(mId, pos.x + 1, pos.y - 0.7);
+
+          // Fondo para filas ganadoras
+          if (homeWins) {
+            doc.setFillColor(220, 252, 231); // verde claro
+            doc.rect(pos.x + 0.1, pos.y + 0.1, boxWidth - 0.2, 6.3, "F");
           }
-        });
-
-        // Dibujar Tabla Derecha
-        autoTable(doc, {
-          head: [["Fase", "", "Local", "vs", "Vis.", "", "Pronóstico"]],
-          body: rightTableData,
-          startY: 38,
-          margin: { left: 110, right: 14 },
-          styles: { 
-            fontSize: 7.5, 
-            cellPadding: 2.5,
-            fillColor: [255, 255, 255],
-            textColor: [15, 23, 42],
-            lineColor: [226, 232, 240],
-            lineWidth: 0.1,
-          },
-          headStyles: {
-            fillColor: [15, 23, 42],
-            textColor: [255, 255, 255],
-            fontSize: 7.5,
-            fontStyle: "bold",
-          },
-          alternateRowStyles: {
-            fillColor: [248, 250, 252],
-          },
-          columnStyles: {
-            0: { cellWidth: 14, halign: "center" },
-            1: { cellWidth: 8, halign: "center" }, // Espacio para Bandera Local
-            2: { cellWidth: 12, halign: "right", fontStyle: "bold" },
-            3: { cellWidth: 8, halign: "center", textColor: [156, 163, 175] },
-            4: { cellWidth: 12, halign: "left", fontStyle: "bold" },
-            5: { cellWidth: 8, halign: "center" }, // Espacio para Bandera Vis.
-            6: { cellWidth: 26, halign: "center", fontStyle: "bold", textColor: [0, 176, 107] },
-          },
-          theme: "grid",
-          didDrawCell: (data: any) => {
-            if (data.section === "body") {
-              const rowIndex = data.row.index;
-              const matchId = rightMatchIds[rowIndex];
-              const slotTeams = userBracket[matchId];
-              if (!slotTeams) return;
-
-              if (data.column.index === 1 && slotTeams.home) {
-                const base64 = flagCache[TEAMS[slotTeams.home]?.iso2];
-                if (base64) {
-                  const x = data.cell.x + (data.cell.width - 5.5) / 2;
-                  const y = data.cell.y + (data.cell.height - 3.8) / 2;
-                  doc.addImage(base64, "PNG", x, y, 5.5, 3.8);
-                }
-              } else if (data.column.index === 5 && slotTeams.away) {
-                const base64 = flagCache[TEAMS[slotTeams.away]?.iso2];
-                if (base64) {
-                  const x = data.cell.x + (data.cell.width - 5.5) / 2;
-                  const y = data.cell.y + (data.cell.height - 3.8) / 2;
-                  doc.addImage(base64, "PNG", x, y, 5.5, 3.8);
-                }
-              }
-            }
+          if (awayWins) {
+            doc.setFillColor(220, 252, 231); // verde claro
+            doc.rect(pos.x + 0.1, pos.y + 6.6, boxWidth - 0.2, 6.3, "F");
           }
+
+          // Línea divisoria interna
+          doc.setDrawColor(226, 232, 240); // slate-200
+          doc.line(pos.x, pos.y + 6.5, pos.x + boxWidth, pos.y + 6.5);
+
+          // Fila Local (Home)
+          if (homeTeam) {
+            const base64 = flagCache[homeTeam.iso2];
+            if (base64) {
+              doc.addImage(base64, "PNG", pos.x + 1.2, pos.y + 1.85, 4.2, 2.8);
+            }
+            doc.setFont("helvetica", homeWins ? "bold" : "normal");
+            doc.setFontSize(7.5);
+            doc.setTextColor(homeWins ? 0 : 15, homeWins ? 176 : 23, homeWins ? 107 : 42); // Verde quiniela / slate-900
+            doc.text(homeTeam.code, pos.x + 6.5, pos.y + 4.55);
+
+            // Goles
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8);
+            doc.setTextColor(15, 23, 42);
+            doc.text(homeGoals !== null ? String(homeGoals) : "-", pos.x + boxWidth - 2, pos.y + 4.55, { align: "right" });
+          } else {
+            doc.setFont("helvetica", "italic");
+            doc.setFontSize(6.5);
+            doc.setTextColor(148, 163, 184);
+            doc.text("TBD", pos.x + 2, pos.y + 4.55);
+          }
+
+          // Fila Visitante (Away)
+          if (awayTeam) {
+            const base64 = flagCache[awayTeam.iso2];
+            if (base64) {
+              doc.addImage(base64, "PNG", pos.x + 1.2, pos.y + 8.35, 4.2, 2.8);
+            }
+            doc.setFont("helvetica", awayWins ? "bold" : "normal");
+            doc.setFontSize(7.5);
+            doc.setTextColor(awayWins ? 0 : 15, awayWins ? 176 : 23, awayWins ? 107 : 42);
+            doc.text(awayTeam.code, pos.x + 6.5, pos.y + 11.05);
+
+            // Goles
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8);
+            doc.setTextColor(15, 23, 42);
+            doc.text(awayGoals !== null ? String(awayGoals) : "-", pos.x + boxWidth - 2, pos.y + 11.05, { align: "right" });
+          } else {
+            doc.setFont("helvetica", "italic");
+            doc.setFontSize(6.5);
+            doc.setTextColor(148, 163, 184);
+            doc.text("TBD", pos.x + 2, pos.y + 11.05);
+          }
+        };
+
+        // Dibujar todos los partidos del bracket
+        Object.keys(matchPositions).forEach((mId) => {
+          drawMatchCard(mId);
         });
+
+        // Calcular podio final de pronósticos
+        const m103 = userBracket["M103"];
+        const p103 = user.knockoutPredictions["M103"];
+        let third = "TBD";
+        if (m103 && p103 && p103.homeGoals !== null && p103.awayGoals !== null && m103.home && m103.away) {
+          third = p103.homeGoals > p103.awayGoals ? m103.home : m103.away;
+        }
+
+        const m104 = userBracket["M104"];
+        const p104 = user.knockoutPredictions["M104"];
+        let champion = "TBD";
+        let runnerUp = "TBD";
+        if (m104 && p104 && p104.homeGoals !== null && p104.awayGoals !== null && m104.home && m104.away) {
+          champion = p104.homeGoals > p104.awayGoals ? m104.home : m104.away;
+          runnerUp = p104.homeGoals > p104.awayGoals ? m104.away : m104.home;
+        }
+
+        const formatTeamPodium = (code: string) => {
+          if (code === "TBD") return "TBD";
+          const t = TEAMS[code];
+          if (!t) return "TBD";
+          return t.name.length > 11 ? `${t.name.substring(0, 10)}.` : t.name;
+        };
+
+        // Dibujar caja especial de PODIO en el espacio del centro abajo
+        const yPodium = 145;
+        doc.setFillColor(248, 250, 252); // slate-50
+        doc.setDrawColor(203, 213, 225); // slate-300
+        doc.setLineWidth(0.15);
+        doc.rect(colX[4], yPodium, boxWidth, 44, "FD");
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(15, 23, 42); // slate-900
+        doc.text("PODIO", colX[4] + boxWidth / 2, yPodium + 5, { align: "center" });
+        doc.setDrawColor(226, 232, 240); // slate-200
+        doc.line(colX[4], yPodium + 7, colX[4] + boxWidth, yPodium + 7);
+
+        // 1. Campeón
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6);
+        doc.setTextColor(71, 85, 105);
+        doc.text("1. Campeón:", colX[4] + 2, yPodium + 12);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(202, 138, 4); // Gold-600
+        doc.text(champion !== "TBD" ? `${formatTeamPodium(champion)} (${champion})` : "TBD", colX[4] + 2, yPodium + 16);
+
+        // 2. Subcampeón
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6);
+        doc.setTextColor(71, 85, 105);
+        doc.text("2. Subcampeón:", colX[4] + 2, yPodium + 23);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(100, 116, 139); // Slate-500
+        doc.text(runnerUp !== "TBD" ? `${formatTeamPodium(runnerUp)} (${runnerUp})` : "TBD", colX[4] + 2, yPodium + 27);
+
+        // 3. Tercer Puesto
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6);
+        doc.setTextColor(71, 85, 105);
+        doc.text("3. Tercer Puesto:", colX[4] + 2, yPodium + 34);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(180, 83, 9); // Amber-700
+        doc.text(third !== "TBD" ? `${formatTeamPodium(third)} (${third})` : "TBD", colX[4] + 2, yPodium + 38);
 
         // Agregar pie de página para cada usuario
         doc.setFontSize(7);
         doc.setTextColor(148, 163, 184); // Slate-400
-        doc.text(`SuperQuiniela 2026 - Pág. ${index + 1} de ${pdfUsers.length}`, 14, 287);
-        doc.text("Transparencia y deportividad · Todos los pronósticos están congelados al inicio del torneo.", 75, 287);
+        doc.text(`SuperQuiniela 2026 - Pág. ${index + 1} de ${pdfUsers.length}`, 10, 202);
+        doc.text("Transparencia y deportividad · Todos los pronósticos están congelados al inicio del torneo.", 80, 202);
       });
 
       doc.save("Quiniela_2026_Pronosticos_Eliminatorias.pdf");
