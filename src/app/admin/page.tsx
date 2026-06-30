@@ -1122,6 +1122,18 @@ export default function AdminPage() {
                           Borrador
                         </span>
                         <button
+                          onClick={() => handleApprove(q.id)}
+                          disabled={isProcessing}
+                          className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs bg-brand hover:bg-brand-hover text-white transition-colors disabled:opacity-50"
+                          title="Aprobar Borrador"
+                        >
+                          {isProcessing ? (
+                            <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <><UserCheck size={14} /><span className="hidden md:inline"> Aprobar</span></>
+                          )}
+                        </button>
+                        <button
                           onClick={() => handleReject(q.id)}
                           disabled={isProcessing}
                           className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 transition-colors disabled:opacity-50"
