@@ -213,13 +213,11 @@ export default function PronosticosPage() {
         awaySlot: ""
       };
     }
-    const myHome = myResolvedBracket?.[match.id]?.home;
-    const myAway = myResolvedBracket?.[match.id]?.away;
     const officialHome = officialResolved?.[match.id]?.home;
     const officialAway = officialResolved?.[match.id]?.away;
 
-    const homeCode = myHome || officialHome || "";
-    const awayCode = myAway || officialAway || "";
+    const homeCode = officialHome || "";
+    const awayCode = officialAway || "";
 
     return {
       homeCode,
@@ -1921,15 +1919,14 @@ export default function PronosticosPage() {
 
                 return matchesToRender.map((match) => {
                   const isKO = match.id.startsWith("M");
-                  const homeACode = isKO ? userAResolved[match.id]?.home : (match as any).homeTeam;
-                  const awayACode = isKO ? userAResolved[match.id]?.away : (match as any).awayTeam;
-                  const homeBCode = isKO ? userBResolved[match.id]?.home : (match as any).homeTeam;
-                  const awayBCode = isKO ? userBResolved[match.id]?.away : (match as any).awayTeam;
+                  // Siempre usar la fuente oficial para los equipos reales del partido
+                  const matchHomeCode = isKO ? officialResolved[match.id]?.home : (match as any).homeTeam;
+                  const matchAwayCode = isKO ? officialResolved[match.id]?.away : (match as any).awayTeam;
 
-                  const homeA = homeACode ? TEAMS[homeACode] : null;
-                  const awayA = awayACode ? TEAMS[awayACode] : null;
-                  const homeB = homeBCode ? TEAMS[homeBCode] : null;
-                  const awayB = awayBCode ? TEAMS[awayBCode] : null;
+                  const homeA = matchHomeCode ? TEAMS[matchHomeCode] : null;
+                  const awayA = matchAwayCode ? TEAMS[matchAwayCode] : null;
+                  const homeB = matchHomeCode ? TEAMS[matchHomeCode] : null;
+                  const awayB = matchAwayCode ? TEAMS[matchAwayCode] : null;
 
                   const userAPred = userA ? (isKO ? userA.knockoutPredictions[match.id] : userA.predictions[match.id]) : undefined;
                   const userBPred = userB ? (isKO ? userB.knockoutPredictions[match.id] : userB.predictions[match.id]) : undefined;
@@ -1951,19 +1948,19 @@ export default function PronosticosPage() {
                             {homeA ? (
                               <>
                                 <Flag iso2={homeA.iso2} name={homeA.name} size="sm" />
-                                <span className="font-bold text-content text-xs">{homeACode}</span>
+                                <span className="font-bold text-content text-xs">{matchHomeCode}</span>
                               </>
                             ) : (
-                              <span className="text-[10px] text-content-muted">TBD</span>
+                              <span className="text-[10px] text-content-muted">Equipo indefinido</span>
                             )}
                             <span className="text-content-muted text-[10px] font-bold">vs</span>
                             {awayA ? (
                               <>
                                 <Flag iso2={awayA.iso2} name={awayA.name} size="sm" />
-                                <span className="font-bold text-content text-xs">{awayACode}</span>
+                                <span className="font-bold text-content text-xs">{matchAwayCode}</span>
                               </>
                             ) : (
-                              <span className="text-[10px] text-content-muted">TBD</span>
+                              <span className="text-[10px] text-content-muted">Equipo indefinido</span>
                             )}
                           </div>
                           {/* Match ID + Official */}
@@ -1974,7 +1971,7 @@ export default function PronosticosPage() {
                                 {official.home_goals}-{official.away_goals}
                               </span>
                             ) : (
-                              <span className="text-[9px] text-content-muted font-bold bg-base border border-line/40 px-1 py-0.5 rounded">TBD</span>
+                              <span className="text-[9px] text-content-muted font-bold bg-base border border-line/40 px-1 py-0.5 rounded">Equipo indefinido</span>
                             )}
                           </div>
                         </div>
@@ -2021,7 +2018,7 @@ export default function PronosticosPage() {
                                 <Flag iso2={homeA.iso2} name={homeA.name} size="md" />
                               </>
                             ) : (
-                              <span className="text-xs text-content-muted italic">TBD</span>
+                              <span className="text-[10px] text-content-muted italic">Equipo indefinido</span>
                             )}
                             <span className="text-content-muted font-bold text-xs mx-1">vs</span>
                             {awayA ? (
@@ -2030,7 +2027,7 @@ export default function PronosticosPage() {
                                 <span className="font-semibold text-content text-sm truncate">{awayA.name}</span>
                               </>
                             ) : (
-                              <span className="text-xs text-content-muted italic">TBD</span>
+                              <span className="text-[10px] text-content-muted italic">Equipo indefinido</span>
                             )}
                           </div>
                           <div className="flex items-center gap-2 shrink-0 ml-3">
@@ -2051,7 +2048,7 @@ export default function PronosticosPage() {
                               {official.home_goals} - {official.away_goals}
                             </div>
                           ) : (
-                            <span className="text-[10px] text-content-muted font-bold bg-base border border-line/40 px-2 py-0.5 rounded-md">TBD</span>
+                            <span className="text-[9px] text-content-muted font-bold bg-base border border-line/40 px-2 py-0.5 rounded-md text-center leading-tight">Equipo indefinido</span>
                           )}
                           {renderDiffBadge(ptsA, ptsB, official)}
                         </div>
@@ -2073,7 +2070,7 @@ export default function PronosticosPage() {
                                 <span className="font-semibold text-content text-sm truncate">{homeB.name}</span>
                               </>
                             ) : (
-                              <span className="text-xs text-content-muted italic">TBD</span>
+                              <span className="text-[10px] text-content-muted italic">Equipo indefinido</span>
                             )}
                             <span className="text-content-muted font-bold text-xs mx-1">vs</span>
                             {awayB ? (
@@ -2082,7 +2079,7 @@ export default function PronosticosPage() {
                                 <span className="font-semibold text-content text-sm truncate">{awayB.name}</span>
                               </>
                             ) : (
-                              <span className="text-xs text-content-muted italic">TBD</span>
+                              <span className="text-[10px] text-content-muted italic">Equipo indefinido</span>
                             )}
                           </div>
                         </div>

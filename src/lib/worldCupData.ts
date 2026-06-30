@@ -363,23 +363,23 @@ export function assignThirdPlaceTeams(
 // Estructura fija del bracket FIFA 2026
 export const R32_MATCHES: KnockoutMatch[] = [
   // Lado Izquierdo (Mitad Superior) del bracket, de arriba a abajo
-  { id: "M74", round: "R32", homeSlot: "1E", awaySlot: "3RD" }, // 3rd place
-  { id: "M77", round: "R32", homeSlot: "1I", awaySlot: "3RD" }, // 3rd place
-  { id: "M73", round: "R32", homeSlot: "2A", awaySlot: "2B" },
-  { id: "M75", round: "R32", homeSlot: "1F", awaySlot: "2C" },
-  { id: "M83", round: "R32", homeSlot: "2K", awaySlot: "2L" },
-  { id: "M84", round: "R32", homeSlot: "1H", awaySlot: "2J" },
-  { id: "M81", round: "R32", homeSlot: "1D", awaySlot: "3RD" }, // 3rd place
-  { id: "M82", round: "R32", homeSlot: "1G", awaySlot: "3RD" }, // 3rd place
+  { id: "M74", round: "R32", homeSlot: "1E", awaySlot: "3RD", homeTeam: "GER", awayTeam: "PAR" }, // 3rd place
+  { id: "M77", round: "R32", homeSlot: "1I", awaySlot: "3RD", homeTeam: "FRA", awayTeam: "SWE" }, // 3rd place
+  { id: "M73", round: "R32", homeSlot: "2A", awaySlot: "2B", homeTeam: "RSA", awayTeam: "CAN" },
+  { id: "M75", round: "R32", homeSlot: "1F", awaySlot: "2C", homeTeam: "NED", awayTeam: "MAR" },
+  { id: "M83", round: "R32", homeSlot: "2K", awaySlot: "2L", homeTeam: "POR", awayTeam: "CRO" },
+  { id: "M84", round: "R32", homeSlot: "1H", awaySlot: "2J", homeTeam: "ESP", awayTeam: "AUT" },
+  { id: "M81", round: "R32", homeSlot: "1D", awaySlot: "3RD", homeTeam: "USA", awayTeam: "BIH" }, // 3rd place
+  { id: "M82", round: "R32", homeSlot: "1G", awaySlot: "3RD", homeTeam: "BEL", awayTeam: "SEN" }, // 3rd place
   // Lado Derecho (Mitad Inferior) del bracket, de arriba a abajo
-  { id: "M76", round: "R32", homeSlot: "1C", awaySlot: "2F" },
-  { id: "M78", round: "R32", homeSlot: "2E", awaySlot: "2I" },
-  { id: "M79", round: "R32", homeSlot: "1A", awaySlot: "3RD" }, // 3rd place
-  { id: "M80", round: "R32", homeSlot: "1L", awaySlot: "3RD" }, // 3rd place
-  { id: "M86", round: "R32", homeSlot: "1J", awaySlot: "2H" },
-  { id: "M88", round: "R32", homeSlot: "2D", awaySlot: "2G" },
-  { id: "M85", round: "R32", homeSlot: "1B", awaySlot: "3RD" }, // 3rd place
-  { id: "M87", round: "R32", homeSlot: "1K", awaySlot: "3RD" }, // 3rd place
+  { id: "M76", round: "R32", homeSlot: "1C", awaySlot: "2F", homeTeam: "BRA", awayTeam: "JPN" },
+  { id: "M78", round: "R32", homeSlot: "2E", awaySlot: "2I", homeTeam: "CIV", awayTeam: "NOR" },
+  { id: "M79", round: "R32", homeSlot: "1A", awaySlot: "3RD", homeTeam: "MEX", awayTeam: "ECU" }, // 3rd place
+  { id: "M80", round: "R32", homeSlot: "1L", awaySlot: "3RD", homeTeam: "ENG", awayTeam: "COD" }, // 3rd place
+  { id: "M86", round: "R32", homeSlot: "1J", awaySlot: "2H", homeTeam: "ARG", awayTeam: "CPV" },
+  { id: "M88", round: "R32", homeSlot: "2D", awaySlot: "2G", homeTeam: "AUS", awayTeam: "EGY" },
+  { id: "M85", round: "R32", homeSlot: "1B", awaySlot: "3RD", homeTeam: "SUI", awayTeam: "ALG" }, // 3rd place
+  { id: "M87", round: "R32", homeSlot: "1K", awaySlot: "3RD", homeTeam: "COL", awayTeam: "GHA" }, // 3rd place
 ];
 
 // Ronda de 16 (ganadores de R32)
@@ -469,8 +469,8 @@ export function resolveKnockoutBracket(
 
   // Resolver R32
   for (const match of R32_MATCHES) {
-    const home = resolveSlot(match.homeSlot, match.id);
-    const away = resolveSlot(match.awaySlot, match.id);
+    const home = match.homeTeam || resolveSlot(match.homeSlot, match.id);
+    const away = match.awayTeam || resolveSlot(match.awaySlot, match.id);
     resolved[match.id] = { home, away };
 
     // Determinar ganador basado en predicción del usuario
@@ -483,8 +483,8 @@ export function resolveKnockoutBracket(
   // Resolver R16, QF, SF, Finals
   const laterRounds = [...R16_MATCHES, ...QF_MATCHES, ...SF_MATCHES, ...FINAL_MATCHES];
   for (const match of laterRounds) {
-    const home = resolveSlot(match.homeSlot);
-    const away = resolveSlot(match.awaySlot);
+    const home = match.homeTeam || resolveSlot(match.homeSlot);
+    const away = match.awayTeam || resolveSlot(match.awaySlot);
     resolved[match.id] = { home, away };
 
     const pred = knockoutPredictions[match.id];
